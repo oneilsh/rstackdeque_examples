@@ -101,7 +101,7 @@ allresdf_long<- read.table("times3_resdf_long.txt", header = T, sep = "\t", stri
 allresdf_long$count <- as.numeric(allresdf_long$count)
 allresdf_long$struct <- factor(allresdf_long$struct, levels = c("rstack", "rdeque", "rpqueue"))
 allresdf_long$test <- factor(allresdf_long$test, levels = c("insert", "remove", "mix"),
-                             labels = c("Inserts", "Removes", "Insert/Remove Mix"))
+                             labels = c("Inserts", "Removes", "Mix"))
 
 library(ggplot2)
 p <- ggplot(allresdf_long[allresdf_long$variable == "seconds" & allresdf_long$count >= 10000,]) +
