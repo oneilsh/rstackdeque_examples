@@ -1,6 +1,7 @@
 require(rstackdeque)
+require(dplyr)
 
-## span = 2 if we're building, span = 1 if we're searching (post wall removal)
+## dist = 2 if we're building, dist = 1 if we're searching (post wall removal)
 ## if all = TRUE returns all unvisited neighbors
 ## unvisited neighbor defined by a "."
 random_unvisited_neighbor <- function(maze, loc, dist = 2, all= FALSE) {
@@ -39,35 +40,41 @@ plot_ascii_maze <- function(maze, save = NULL) {
   colnames(maze) <- as.character(seq(1, ncol(maze)))
   rownames(maze) <- as.character(seq(1, nrow(maze)))
   maze[maze == "#"] <- NA #-1*max(abs(as.numeric(maze)), na.rm = TRUE)
-  maze[maze == " "] <- 1
-  maze[maze == "."] <- 0
-  maze[maze == "S" | maze == "E"] <- 1
+  maze[maze == " "] <- "1"
+  maze[maze == "."] <- "0"
+  maze[maze == "S" | maze == "E"] <- "1"
   mazedf <- as.data.frame(maze)
   mazedf$row <- as.integer(rownames(mazedf))
   mazedflong <- melt(mazedf, c("row"), value.name = "celltype", variable.name = "col")
   mazedflong$col <- as.numeric(mazedflong$col)
   mazedflong$row <- as.numeric(mazedflong$row)
   mazedflong$celltype <- as.numeric(mazedflong$celltype)
-  solution <- mazedflong[mazedflong$celltype < 0,]
-  solution$celltype <- 1
-  notvisited <- mazedflong[mazedflong$celltype == 0,]
-  notvisited$celltype <- -1*max(abs(mazedflong$celltype), na.rm = TRUE)/2
-  mazedflong$celltype <- abs(mazedflong$celltype)
-  mazedflong$celltype[is.na(mazedflong$celltype)] <- -1*max(abs(mazedflong$celltype), na.rm = TRUE)
   
+  solution <- mazedflong[mazedflong$celltype < 0, ]
+  solution$celltype <- 1
+
+  walls <- mazedflong[is.na(mazedflong$celltype), ]
+  walls$celltype <- 0
+  
+  notvisited <- mazedflong[mazedflong$celltype == 0, ]
+  
+  mazedflong$celltype <- abs(mazedflong$celltype)
+  
+  print(head(mazedflong))
   library(ggplot2)
   p <- ggplot(mazedflong) +
     geom_tile(aes(x = col, y = row, fill = celltype), linetype = 0) +
-    geom_point(data = solution, aes(x = col, y = row), color= "red") +  
+    geom_point(data = solution, aes(x = col, y = row), color= "red") +
+    geom_tile(data = notvisited, aes(x = col, y = row), fill = "#333333") +
+    geom_tile(data = walls, aes(x = col, y = row), fill = "black") +
     scale_y_reverse() + 
     coord_equal() +
     theme_bw() +
     theme(legend.position = "none") +
     theme(axis.ticks = element_blank(), axis.text.x = element_blank(), axis.title.x = element_blank()) +
     theme(axis.ticks = element_blank(), axis.text.y = element_blank(), axis.title.y = element_blank()) 
-  if(is.null(save)) {
-    plot(p)
-  } else {
+  plot(p)
+  if(!is.null(save)) {
     ggsave(save, p)
   }
 }
@@ -120,6 +127,8 @@ solve_ascii_maze_dfs <- function(maze) {
   # set all open corredors and the end and start as unvisited
   maze[maze == " " | maze == "E" | maze == "S"] <- "."
   
+  # remember the history of the search
+  path_history <- rstack()
   # initialize the solution stack and start location
   loc = start
   path <- rstack()
@@ -142,6 +151,7 @@ solve_ascii_maze_dfs <- function(maze) {
       path <- without_top(path)
     }
     step <- step + 1
+    path_history <- insert_top(path_history, path)
   }
   
   # mark the solution from end to start by negating the visit numbers
@@ -152,7 +162,7 @@ solve_ascii_maze_dfs <- function(maze) {
     path <- without_top(path)
     maze[loc$row, loc$col] <- -1 * as.numeric(maze[loc$row, loc$col])
   }
-  return(maze)
+  return(list(maze, path_history))
 }
 
 
@@ -163,6 +173,9 @@ solve_ascii_maze_bfs <- function(maze) {
   
   # set all open corredors and the end and start as unvisited
   maze[maze == " " | maze == "E" | maze == "S"] <- "."
+  
+  # remember the history of the search
+  visits_history <- rstack()
   
   # initialize the solution stack and start location
   loc = start
@@ -184,6 +197,7 @@ solve_ascii_maze_bfs <- function(maze) {
       visits <- insert_back(visits, neighbor)
       maze[neighbor$row, neighbor$col] <- step
       step <- step + 1
+      visits_history <- insert_top(visits_history, visits)
     }
   }
   
@@ -199,15 +213,35 @@ solve_ascii_maze_bfs <- function(maze) {
     loc <- pathpart$from
   }
   maze[loc$row, loc$col] <- as.numeric(maze[loc$row, loc$col]) * -1
-  return(maze)
+  return(list(maze, visits_history))
 }
 
 
-maze <- create_ascii_maze(23, 55)
-#plot_ascii_maze(maze, "maze_unsolved.pdf")
+maze <- create_ascii_maze(71, 101)
+plot_ascii_maze(maze)
 
-solved_dfs <- solve_ascii_maze_dfs(maze)
-#plot_ascii_maze(solved_dfs, "maze_solved_dfs.pdf")
+## Returns a solved maze (position 1) and the history of the solution 
+## (stack of stacks, or stack of queues, position 2)
+solved <- solve_ascii_maze_bfs(maze)
+#solved <- solve_ascii_maze_dfs(maze)
+plot_ascii_maze(solved[[1]], "maze_solved_bfs2.pdf")
 
-solved_bfs <- solve_ascii_maze_bfs(maze)
-#plot_ascii_maze(solved_bfs, "maze_solved_bfs.pdf")
+## Count how long each cells was in the structure
+history <- as.list(solved[[2]])
+history <- lapply(history, as.data.frame)
+history <- do.call(rbind, history)
+history_counts <- history %>% group_by(row, col) %>% summarize(count = length(col))
+print(head(history))
+print(history_counts)
+
+## put the counts in the maze
+history_maze <- maze
+for(i in seq(1, nrow(history_counts))) {
+  row = history_counts$row[i]
+  col = history_counts$col[i]
+  count = history_counts$count[i]
+  history_maze[row, col] <- as.character(count)
+}
+
+## plot the history/count maze
+plot_ascii_maze(history_maze, "maze_solved_bfs2_history.pdf")

@@ -11,6 +11,7 @@ if(RUNTESTS) {
   resnum <- 1
   
   insert_n <- function(n, structtype, insertfunc) {
+    #cache <- as.list(seq(1,n))
     s <- structtype()
     for(i in seq(1,n)) {
       s <- insertfunc(s, i)
@@ -50,6 +51,11 @@ if(RUNTESTS) {
   insertfuncs <- as.list(c(insert_top, insert_back, insert_back))
   removefuncs <- as.list(c(without_top, without_front, without_front))
   structnames <- as.list(c("rstack", "rdeque", "rpqueue"))
+
+  #structs <- as.list(c(rpqueue))
+  #insertfuncs <- as.list(c(insert_back))
+  #removefuncs <- as.list(c(without_front))
+  #structnames <- as.list(c("rpqueue"))
   
   for(count in counts) {
     for(rep in 1:reps) {
@@ -62,7 +68,7 @@ if(RUNTESTS) {
         
         # We always remove s and clear the gc() before inserting. we count environment usage immediately
         # before and after the run and use the differences.
-        rm(s)
+        if(exists("s")) { rm(s) }
         gc()
         before <- memory.profile()
         res <- microbenchmark({s <- insert_n(count, struct, insertfunc)}, times = 1)
@@ -77,7 +83,7 @@ if(RUNTESTS) {
         resnum <- resnum + 1 
         
         
-        rm(s)
+        if(exists("s")) { rm(s) }
         gc()
         before <- memory.profile()
         res <- microbenchmark({s <- mix_n(count, struct, insertfunc, removefunc)}, times = 1)
@@ -114,7 +120,7 @@ p <- ggplot(allresdf_long[allresdf_long$variable == "seconds" & allresdf_long$co
   theme_grey(18) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 plot(p)
-ggsave("runtimes.pdf", p, width = 12, height = 6)
+ggsave("runtimes2.pdf", p, width = 12, height = 6)
 
 library(ggplot2)
 p <- ggplot(allresdf_long[allresdf_long$variable == "envcount" & allresdf_long$count >= 10000 & allresdf_long$test == "Inserts",]) +
@@ -127,5 +133,5 @@ p <- ggplot(allresdf_long[allresdf_long$variable == "envcount" & allresdf_long$c
   theme_grey(18) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 plot(p)
-ggsave("envcounts.pdf", p, width = 12, height = 3.5)
+ggsave("envcounts2.pdf", p, width = 12, height = 3.5)
 
